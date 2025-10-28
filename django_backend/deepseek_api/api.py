@@ -5,8 +5,8 @@ from typing import Optional
 from . import services
 from django.conf import settings
 from .schemas import LoginIn, LoginOut, ChatIn, ChatOut, HistoryOut, ErrorResponse
-from .models import APIKey
-from .services import get_or_create_session, deepseek_r1_api_call, get_cached_reply, set_cached_reply
+from .models import APIKey,ConversationSession, ChatTurn
+from .services import get_or_create_session, deepseek_r1_api_call, get_cached_reply, set_cached_reply,build_prompt_from_turns,save_turn
 from datetime import datetime
 import logging
 logger = logging.getLogger(__name__)
@@ -71,43 +71,35 @@ def login(request, data: LoginIn):
     key = services.create_api_key(username)
     return {"api_key": key, "expiry": settings.TOKEN_EXPIRY_SECONDS}
 
-@router.post("/chat", response={200: ChatOut, 401: ErrorResponse})
+@router.post("/chat", response={200: ChatOut, 401: ErrorResponse, 400: ErrorResponse})
 def chat(request, data: ChatIn):
-    # 1. 认证验证（确保用户已登录）
     if not request.auth:
         return 401, {"error": "请先登录获取API Key"}
-    
-    # 2. 解析参数（确保 session_id 有效）
+
     session_id = data.session_id.strip() or "default_session"
     user_input = data.user_input.strip()
     if not user_input:
         return 400, {"error": "请输入消息内容"}
-    
-    # 3. 获取会话（加载旧会话或创建新会话）
-    user = request.auth  # 从认证获取当前用户（APIKey对象）
+
+    user = request.auth
     session = get_or_create_session(session_id, user)
-    
-    # 4. 拼接上下文（历史记录 + 当前输入）→ 关键！
-    # 若 session.context 不为空，说明是旧会话（带历史）
-    # 从session获取纯净的对话历史（仅用户输入和回复）
-    pure_context = session.context
-    # 拼接prompt：纯历史 + 当前用户输入（不含时间戳）
-    prompt = pure_context + f"用户：{user_input}\n回复："
-    logger.info(f"传递给大模型的prompt：\n{prompt}")  # 调试日志
-    
-    # 5. 调用大模型（带完整上下文）
-    # 获取缓存时传入session_id和user
-    cached_reply = get_cached_reply(prompt, session_id, user)
-    if cached_reply:
-        reply = cached_reply
+
+    # 1. 保存用户这轮问题
+    save_turn(session, 'user', user_input)
+
+    # 2. 动态拼装多轮上下文
+    prompt = build_prompt_from_turns(session)
+
+    # 3. 调用大模型（带缓存）
+    cached = get_cached_reply(prompt, session_id, user)
+    if cached:
+        reply = cached
     else:
         reply = deepseek_r1_api_call(prompt)
-        # 设置缓存时传入session_id和user
         set_cached_reply(prompt, reply, session_id, user)
-    
-    # 6. 保存上下文到会话（更新历史记录）
-    session.context += f"用户：{user_input}\n回复：{reply}\n"
-    session.save()  # 持久化到数据库
+
+    # 4. 保存助手这轮回复（可再解析 structured_result）
+    save_turn(session, 'assistant', reply)
     
     # session.update_context(user_input, reply)
 
