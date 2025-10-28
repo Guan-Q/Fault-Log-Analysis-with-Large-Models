@@ -3,7 +3,7 @@ import threading
 from typing import Dict, Any, Optional
 from django.core.cache import cache
 import hashlib
-from .models import APIKey, RateLimit, ConversationSession
+from .models import APIKey, RateLimit, ConversationSession,ChatTurn
 from django.conf import settings
 
 # 全局配置
@@ -140,3 +140,35 @@ def generate_cache_key(original_key: str) -> str:
     # 使用SHA256哈希函数生成固定长度的键（64位十六进制字符串）
     hash_obj = hashlib.sha256(original_key.encode('utf-8'))
     return hash_obj.hexdigest()
+
+def build_prompt_from_turns(session: ConversationSession, max_history: int = 5) -> str:
+    # ① 按 id 升序拿最近 N 轮（用户+助手）
+    turns = list(session.turns.filter(role__in=['user', 'assistant'])
+                              .order_by('-id')[:max_history])
+    turns.reverse()                      # 现在按时间正序
+
+    # ② 严格交替拼
+    lines = []
+    for t in turns:
+        if t.role == 'user':
+            lines.append(f"用户：{t.message}")
+        else:
+            lines.append(f"助手：{t.message}")
+
+    # ③ 最后留空让模型续写
+    lines.append("助手：")
+    return "\n".join(lines)
+
+def save_turn(session: ConversationSession,
+              role: str,
+              message: str,
+              structured: dict = None) -> ChatTurn:
+    """
+    原子保存一轮对话，依赖数据库自增 id 保证顺序
+    """
+    return ChatTurn.objects.create(
+        session=session,
+        role=role,
+        message=message,
+        structured_result=structured or {},
+    )
