@@ -87,3 +87,14 @@ class ConversationSession(models.Model):
     
     def __str__(self):
         return self.session_id
+
+class ChatTurn(models.Model):
+    """
+    每一轮对话的“原子”记录
+    """
+    session = models.ForeignKey(ConversationSession, on_delete=models.CASCADE,
+                                related_name='turns')
+    role = models.CharField(max_length=10)              # user / assistant
+    message = models.TextField()                        # 原始文本
+    structured_result = models.JSONField(default=dict, blank=True)  # 可选：解析后的结构化字段
+    created_at = models.DateTimeField(auto_now_add=True)
