@@ -18,7 +18,7 @@ from langchain_ollama import OllamaLLM, OllamaEmbeddings
 
 # llama-index & chroma
 import chromadb
-from llama_index.core import Settings
+from llama_index.core import Settings  # 全局
 from llama_index.core import Document
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, StorageContext
 from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -436,7 +436,7 @@ class TopKLogSystem:
         try:
             retriever = self.log_index.as_retriever(similarity_top_k=top_k)
             results = retriever.retrieve(query)
-            
+
             formatted_results = []
             for result in results:
                 formatted_results.append({

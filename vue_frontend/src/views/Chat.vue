@@ -10,17 +10,12 @@
         @create="handleCreateSession"
         @toggle="toggleSidebar"
       />
-
       <div class="user-info">
         <div class="user-actions">
-          <button class="secondary" @click="handleClearHistory">
-            清空当前会话
-          </button>
           <button class="danger" @click="handleLogout">退出登录</button>
         </div>
       </div>
     </div>
-
     <div class="chat-area">
       <div class="chat-header">
         <h1>DeepSeek-KAI.v.0.0.1 聊天</h1>

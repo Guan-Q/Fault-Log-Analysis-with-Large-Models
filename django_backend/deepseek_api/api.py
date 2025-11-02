@@ -5,8 +5,8 @@ from typing import Optional
 from . import services
 from django.conf import settings
 from .schemas import LoginIn, LoginOut, ChatIn, ChatOut, HistoryOut, ErrorResponse
-from .models import APIKey,ConversationSession, ChatTurn
-from .services import get_or_create_session, deepseek_r1_api_call, get_cached_reply, set_cached_reply,build_prompt_from_turns,save_turn
+from .models import APIKey, ConversationSession, ChatTurn
+from .services import get_or_create_session, deepseek_r1_api_call, get_cached_reply, set_cached_reply, build_prompt_from_turns, save_turn
 from datetime import datetime
 import logging
 logger = logging.getLogger(__name__)
@@ -73,9 +73,11 @@ def login(request, data: LoginIn):
 
 @router.post("/chat", response={200: ChatOut, 401: ErrorResponse, 400: ErrorResponse})
 def chat(request, data: ChatIn):
+    # 1. 认证验证（确保用户已登录）
     if not request.auth:
         return 401, {"error": "请先登录获取API Key"}
-
+    
+    # 2. 解析参数（确保 session_id 有效）
     session_id = data.session_id.strip() or "default_session"
     user_input = data.user_input.strip()
     if not user_input:
@@ -84,13 +86,14 @@ def chat(request, data: ChatIn):
     user = request.auth
     session = get_or_create_session(session_id, user)
 
-    # 1. 保存用户这轮问题
+    # 3. 保存用户这轮问题（使用 ChatTurn 模型）
     save_turn(session, 'user', user_input)
 
-    # 2. 动态拼装多轮上下文
+    # 4. 动态拼装多轮上下文（从 ChatTurn 构建）
     prompt = build_prompt_from_turns(session)
+    logger.info(f"传递给大模型的prompt：\n{prompt}")  # 调试日志
 
-    # 3. 调用大模型（带缓存）
+    # 5. 调用大模型（带缓存）
     cached = get_cached_reply(prompt, session_id, user)
     if cached:
         reply = cached
@@ -98,8 +101,12 @@ def chat(request, data: ChatIn):
         reply = deepseek_r1_api_call(prompt)
         set_cached_reply(prompt, reply, session_id, user)
 
-    # 4. 保存助手这轮回复（可再解析 structured_result）
+    # 6. 保存助手这轮回复（可再解析 structured_result）
     save_turn(session, 'assistant', reply)
+    
+    # 7. 同时更新 session.context 以保持兼容性
+    session.context += f"用户：{user_input}\n回复：{reply}\n"
+    session.save()  # 持久化到数据库
     
     # session.update_context(user_input, reply)
 

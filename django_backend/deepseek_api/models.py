@@ -90,7 +90,7 @@ class ConversationSession(models.Model):
 
 class ChatTurn(models.Model):
     """
-    每一轮对话的“原子”记录
+    每一轮对话的"原子"记录
     """
     session = models.ForeignKey(ConversationSession, on_delete=models.CASCADE,
                                 related_name='turns')

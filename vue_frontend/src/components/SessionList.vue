@@ -55,7 +55,6 @@
         </div>
       </div>
     </div>
-
     <!-- 新建会话对话框 -->
     <div v-if="showNewSessionDialog" class="dialog-overlay">
       <div class="dialog">

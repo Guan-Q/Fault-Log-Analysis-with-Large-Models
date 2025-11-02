@@ -1,11 +1,14 @@
 import time
 import threading
+import logging
 from typing import Dict, Any, Optional
 from django.core.cache import cache
 import hashlib
-from .models import APIKey, RateLimit, ConversationSession,ChatTurn
+from .models import APIKey, RateLimit, ConversationSession, ChatTurn
 from django.conf import settings
 
+# 配置日志
+logger = logging.getLogger(__name__)
 # 全局配置
 # API_KEY_LENGTH = 32
 # TOKEN_EXPIRY_SECONDS = 3600
@@ -16,13 +19,25 @@ from django.conf import settings
 rate_lock = threading.Lock()
 
 def deepseek_r1_api_call(prompt: str) -> str:
-    """模拟 DeepSeek-R1 API 调用函数"""
-    from topklogsystem import TopKLogSystem
-    system = TopKLogSystem(
-        log_path="./data/log",
-        llm="deepseek-r1:7b",
-        embedding_model="bge-large:latest"
-    )
+    """模拟 DeepSeek-R1 API 调用函数 - 使用增强型系统"""
+    try:
+        # 优先使用增强型系统
+        from enhanced_topklogsystem import EnhancedTopKLogSystem
+        system = EnhancedTopKLogSystem(
+            log_path="./data/log",
+            llm="deepseek-r1:7b",
+            embedding_model="bge-large:latest"
+        )
+        logger.info("使用增强型 TopKLogSystem")
+    except ImportError:
+        # 回退到原始系统
+        from topklogsystem import TopKLogSystem
+        system = TopKLogSystem(
+            log_path="./data/log",
+            llm="deepseek-r1:7b",
+            embedding_model="bge-large:latest"
+        )
+        logger.info("使用原始 TopKLogSystem")
 
     query = prompt
     result = system.query(query)
@@ -147,7 +162,7 @@ def build_prompt_from_turns(session: ConversationSession, max_history: int = 5) 
                               .order_by('-id')[:max_history])
     turns.reverse()                      # 现在按时间正序
 
-    # ② 严格交替拼
+    # ② 严格交替拼接
     lines = []
     for t in turns:
         if t.role == 'user':
